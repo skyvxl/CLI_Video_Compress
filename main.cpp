@@ -64,7 +64,7 @@ int wmain(int argc, wchar_t* argv[]) {
   g_active_cli = nullptr;
 
   if (cli.isStopRequested()) {
-    std::wcout << L"\r" << std::wstring(40, L' ') << L"\r";
+    std::wcout << L"\r" << std::wstring(96, L' ') << L"\r";
     std::wcout << L"Compression stopped.\n";
     return EXIT_FAILURE;
   }

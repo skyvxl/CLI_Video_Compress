@@ -38,7 +38,14 @@ class CLICompress {
   std::vector<std::wstring> m_args;
   std::atomic<bool> m_compressing{false};
   std::atomic<bool> m_cancelRequested{false};
+  std::atomic<long long> m_currentProcessedMs{0};
+  std::atomic<long long> m_currentTotalMs{0};
+  std::atomic<size_t> m_currentFileIndex{0};
+  std::atomic<size_t> m_totalFiles{0};
 
  private:
+  static std::wstring formatDuration(long long milliseconds);
+  static long long parseProgressTimeMs(const std::wstring& value);
+  long long probeDurationMs(const fs::path& file) const;
   void normalizeArgs(std::vector<std::wstring>& args, ParseResult& parser);
 };

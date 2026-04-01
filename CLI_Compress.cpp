@@ -1,9 +1,12 @@
 ﻿#include "CLI_Compress.hpp"
 
+#include <algorithm>
+#include <cstdio>
 #include <cwctype>
 #include <format>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <string_view>
 
 CLICompress::CLICompress() {}
@@ -38,8 +41,38 @@ void CLICompress::showCompressionProgress() {
                                         L"⠴", L"⠦", L"⠧", L"⠇", L"⠏"};
   static size_t frameIndex = 0;
 
+  const long long processedMs = m_currentProcessedMs.load();
+  const long long totalMs = m_currentTotalMs.load();
+  const size_t currentFile = m_currentFileIndex.load();
+  const size_t totalFiles = m_totalFiles.load();
+
+  int percent = 0;
+  if (totalMs > 0) {
+    percent = static_cast<int>((processedMs * 100) / totalMs);
+    percent = std::clamp(percent, 0, 100);
+  }
+
+  constexpr size_t barWidth = 24;
+  const size_t filled =
+      totalMs > 0 ? static_cast<size_t>((percent * barWidth) / 100) : 0;
+  const std::wstring bar =
+      std::wstring(filled, L'#') + std::wstring(barWidth - filled, L'-');
+
   std::wcout << L"\r" << L"\x1b[36m" << frames[frameIndex] << L"\x1b[0m"
-             << L" Compressing video..." << std::flush;
+             << L" [" << bar << L"] ";
+
+  if (totalFiles > 0) {
+    std::wcout << currentFile << L"/" << totalFiles << L" ";
+  }
+
+  if (totalMs > 0) {
+    std::wcout << formatDuration(processedMs) << L" / "
+               << formatDuration(totalMs) << L" (" << percent << L"%)";
+  } else {
+    std::wcout << L"Compressing video...";
+  }
+
+  std::wcout << std::flush;
 
   frameIndex = (frameIndex + 1) % (sizeof(frames) / sizeof(frames[0]));
 }
@@ -65,6 +98,79 @@ bool CLICompress::isAlreadyCompressedFile(const fs::path& path) const {
 
   return stem.compare(stem.size() - suffix.size(), suffix.size(), suffix) ==
          0;
+}
+
+std::wstring CLICompress::formatDuration(long long milliseconds) {
+  if (milliseconds < 0) {
+    milliseconds = 0;
+  }
+
+  const long long totalSeconds = milliseconds / 1000;
+  const long long hours = totalSeconds / 3600;
+  const long long minutes = (totalSeconds % 3600) / 60;
+  const long long seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return std::format(L"{:02}:{:02}:{:02}", hours, minutes, seconds);
+  }
+
+  return std::format(L"{:02}:{:02}", minutes, seconds);
+}
+
+long long CLICompress::parseProgressTimeMs(const std::wstring& value) {
+  int hours = 0;
+  int minutes = 0;
+  double seconds = 0.0;
+  wchar_t separator1 = L'\0';
+  wchar_t separator2 = L'\0';
+
+  std::wistringstream stream(value);
+  stream >> hours >> separator1 >> minutes >> separator2 >> seconds;
+  if (!stream || separator1 != L':' || separator2 != L':') {
+    return 0;
+  }
+
+  const double totalMs =
+      ((hours * 3600.0) + (minutes * 60.0) + seconds) * 1000.0;
+  return static_cast<long long>(totalMs);
+}
+
+long long CLICompress::probeDurationMs(const fs::path& file) const {
+  const std::wstring command = std::format(
+      L"ffprobe -v error -show_entries format=duration "
+      L"-of default=noprint_wrappers=1:nokey=1 \"{}\" 2>NUL",
+      file.wstring());
+
+  FILE* pipe = _wpopen(command.c_str(), L"rt");
+  if (pipe == nullptr) {
+    return 0;
+  }
+
+  wchar_t buffer[256]{};
+  std::wstring output;
+  if (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe) != nullptr) {
+    output = buffer;
+  }
+
+  _pclose(pipe);
+
+  output.erase(std::remove(output.begin(), output.end(), L'\n'), output.end());
+  output.erase(std::remove(output.begin(), output.end(), L'\r'), output.end());
+
+  if (output.empty()) {
+    return 0;
+  }
+
+  try {
+    const long double seconds = std::stold(output);
+    if (seconds <= 0.0L) {
+      return 0;
+    }
+
+    return static_cast<long long>(seconds * 1000.0L);
+  } catch (...) {
+    return 0;
+  }
 }
 
 bool CLICompress::parseArguments(std::vector<std::wstring>& args,
@@ -183,14 +289,23 @@ bool CLICompress::parseArguments(std::vector<std::wstring>& args,
 
 void CLICompress::compressFiles(const std::vector<fs::path>& files) {
   m_compressing = true;
+  m_totalFiles = files.size();
+  m_currentFileIndex = 0;
+  m_currentProcessedMs = 0;
+  m_currentTotalMs = 0;
 
-  for (const auto& file : files) {
+  for (size_t index = 0; index < files.size(); ++index) {
+    const auto& file = files[index];
+    m_currentFileIndex = index + 1;
+    m_currentProcessedMs = 0;
+    m_currentTotalMs = probeDurationMs(file);
+
     if (m_cancelRequested) {
       break;
     }
 
     if (isAlreadyCompressedFile(file)) {
-      std::wcout << L"\r" << std::wstring(48, L' ') << L"\r";
+      std::wcout << L"\r" << std::wstring(96, L' ') << L"\r";
       std::wcout << L"[SKIP] " << file.filename().wstring()
                  << L" is already compressed.\n";
       continue;
@@ -199,14 +314,39 @@ void CLICompress::compressFiles(const std::vector<fs::path>& files) {
     fs::path compressed_name = makeCompressedFileName(file);
 
     std::wstring command = std::format(
-        L"ffmpeg -hwaccel cuda -i \"{}\" -vf \"fps=15\" -c:v av1_nvenc "
+        L"ffmpeg -nostdin -progress pipe:1 -v error -hwaccel cuda -i \"{}\" "
+        L"-vf \"fps=15\" -c:v av1_nvenc "
         L"-preset p7 -tune hq -rc vbr -cq 38 -b:v 0 -rc-lookahead 32 "
-        L"-c:a copy -movflags +faststart \"{}\" > NUL 2>&1",
+        L"-c:a copy -movflags +faststart \"{}\" 2>NUL",
 
         file.wstring(), compressed_name.wstring());
 
-    int result = _wsystem(command.c_str());
-    std::wcout << L"\r" << std::wstring(40, L' ') << L"\r";
+    FILE* pipe = _wpopen(command.c_str(), L"rt");
+    if (pipe == nullptr) {
+      std::wcerr << L"\r" << std::wstring(40, L' ') << L"\r";
+      std::wcerr << L"\x1b[31m[x]\x1b[0m Failed to start ffmpeg for: "
+                 << file.filename().wstring() << L"\n";
+      continue;
+    }
+
+    wchar_t buffer[512]{};
+    while (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe) != nullptr) {
+      std::wstring line = buffer;
+      line.erase(std::remove(line.begin(), line.end(), L'\n'), line.end());
+      line.erase(std::remove(line.begin(), line.end(), L'\r'), line.end());
+
+      if (line.rfind(L"out_time=", 0) == 0) {
+        m_currentProcessedMs = parseProgressTimeMs(line.substr(9));
+      } else if (line == L"progress=end") {
+        const long long totalMs = m_currentTotalMs.load();
+        if (totalMs > 0) {
+          m_currentProcessedMs = totalMs;
+        }
+      }
+    }
+
+    int result = _pclose(pipe);
+    std::wcout << L"\r" << std::wstring(96, L' ') << L"\r";
 
     if (m_cancelRequested) {
       std::wcout << L"[STOP] Compression cancelled by user.\n";
