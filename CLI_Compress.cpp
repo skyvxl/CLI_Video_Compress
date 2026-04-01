@@ -1,7 +1,10 @@
 ﻿#include "CLI_Compress.hpp"
 
 #include <cwctype>
+#include <format>
 #include <iostream>
+#include <iterator>
+#include <string_view>
 
 CLICompress::CLICompress() {}
 
@@ -52,7 +55,20 @@ bool CLICompress::isCompressibleVideoFile(const fs::path& path) {
   return ext == L".mp4" || ext == L".mkv";
 }
 
-bool CLICompress::parseArguments(std::vector<std::wstring>& args) {
+bool CLICompress::isAlreadyCompressedFile(const fs::path& path) const {
+  const std::wstring stem = path.stem().wstring();
+  static constexpr std::wstring_view suffix = L"_compressed";
+
+  if (stem.size() < suffix.size()) {
+    return false;
+  }
+
+  return stem.compare(stem.size() - suffix.size(), suffix.size(), suffix) ==
+         0;
+}
+
+bool CLICompress::parseArguments(std::vector<std::wstring>& args,
+                                 std::vector<fs::path>& files_to_process) {
   ParseResult parser{};
 
   normalizeArgs(args, parser);
@@ -155,7 +171,76 @@ bool CLICompress::parseArguments(std::vector<std::wstring>& args) {
     result = false;
   }
 
+  std::move(parser.files.begin(), parser.files.end(),
+            std::back_inserter(files_to_process));
+  if (result && parser.mode == CommandMode::Recursive &&
+      parser.directory.has_value()) {
+    files_to_process = findVideoFilesRecursive(*parser.directory);
+  }
+
   return result;
+}
+
+void CLICompress::compressFiles(const std::vector<fs::path>& files) {
+  m_compressing = true;
+
+  for (const auto& file : files) {
+    if (m_cancelRequested) {
+      break;
+    }
+
+    if (isAlreadyCompressedFile(file)) {
+      std::wcout << L"\r" << std::wstring(48, L' ') << L"\r";
+      std::wcout << L"[SKIP] " << file.filename().wstring()
+                 << L" is already compressed.\n";
+      continue;
+    }
+
+    fs::path compressed_name = makeCompressedFileName(file);
+
+    std::wstring command = std::format(
+        L"ffmpeg -hwaccel cuda -i \"{}\" -vf \"fps=15\" -c:v av1_nvenc "
+        L"-preset p7 -tune hq -rc vbr -cq 38 -b:v 0 -rc-lookahead 32 "
+        L"-c:a copy -movflags +faststart \"{}\" > NUL 2>&1",
+
+        file.wstring(), compressed_name.wstring());
+
+    int result = _wsystem(command.c_str());
+    std::wcout << L"\r" << std::wstring(40, L' ') << L"\r";
+
+    if (m_cancelRequested) {
+      std::wcout << L"[STOP] Compression cancelled by user.\n";
+      break;
+    }
+
+    if (result == 0) {
+      std::wcout << L"\x1b[32m[√]\x1b[0m " << file.filename().wstring()
+                 << L" successfully compressed.\n";
+    } else {
+      std::wcerr << L"\x1b[31m[x]\x1b[0m Failed to compress: "
+                 << file.filename().wstring() << L"\n";
+    }
+  }
+
+  m_compressing = false;
+}
+
+fs::path CLICompress::makeCompressedFileName(const fs::path& output) {
+  fs::path compressed_name =
+      output.stem().wstring() + L"_compressed" + output.extension().wstring();
+  return output.parent_path() / compressed_name;
+}
+
+std::vector<fs::path> CLICompress::findVideoFilesRecursive(
+    const fs::path& directory) {
+  std::vector<fs::path> video_files;
+  for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+    if (entry.is_regular_file() && isCompressibleVideoFile(entry.path()) &&
+        !isAlreadyCompressedFile(entry.path())) {
+      video_files.push_back(entry.path());
+    }
+  }
+  return video_files;
 }
 
 void CLICompress::normalizeArgs(std::vector<std::wstring>& args,

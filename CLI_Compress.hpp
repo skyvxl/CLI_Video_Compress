@@ -1,7 +1,10 @@
 ﻿#pragma once
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "Parser.hpp"
@@ -17,13 +20,24 @@ class CLICompress {
   bool checkFFMpegInstalled();
   void showCompressionProgress();
   bool isCompressibleVideoFile(const fs::path& path);
-  bool parseArguments(std::vector<std::wstring>& args);
+  bool isAlreadyCompressedFile(const fs::path& path) const;
+  bool parseArguments(std::vector<std::wstring>& args,
+                      std::vector<fs::path>& files_to_process);
   void compressFiles(const std::vector<fs::path>& files);
   fs::path makeCompressedFileName(const fs::path& output);
   std::vector<fs::path> findVideoFilesRecursive(const fs::path& directory);
+  bool isCurrentlyCompressing() const { return m_compressing; }
+  void beginCompression() {
+    m_cancelRequested = false;
+    m_compressing = true;
+  }
+  void requestStop() { m_cancelRequested = true; }
+  bool isStopRequested() const { return m_cancelRequested; }
 
  private:
   std::vector<std::wstring> m_args;
+  std::atomic<bool> m_compressing{false};
+  std::atomic<bool> m_cancelRequested{false};
 
  private:
   void normalizeArgs(std::vector<std::wstring>& args, ParseResult& parser);
