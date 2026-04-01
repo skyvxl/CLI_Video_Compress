@@ -4,14 +4,11 @@
 #include <string>
 #include <vector>
 
+#include "Parser.hpp"
+
 namespace fs = std::filesystem;
 
 class CLICompress {
- public:
-  bool m_flagFiles{false};
-  bool m_flagRecursion{false};
-  bool m_flagHelp{true};
-
  public:
   CLICompress();
   ~CLICompress() = default;
@@ -26,10 +23,8 @@ class CLICompress {
   std::vector<fs::path> findVideoFilesRecursive(const fs::path& directory);
 
  private:
-  std::vector<fs::path> m_files;
   std::vector<std::wstring> m_args;
-  fs::path m_directory;
 
  private:
-  void normalizeArgs(std::vector<std::wstring>& args);
+  void normalizeArgs(std::vector<std::wstring>& args, ParseResult& parser);
 };

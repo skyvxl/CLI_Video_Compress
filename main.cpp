@@ -12,16 +12,19 @@ int wmain(int argc, wchar_t* argv[]) {
   std::vector<std::wstring> args(argv, argv + argc);
   args.erase(args.begin());  // erase program path from args
 
-  for (auto& arg : args) {
-    std::wcout << arg << "\n";
-  }
-
   CLICompress cli{};
-  cli.printHelp();
   if (!cli.checkFFMpegInstalled()) {
-    std::cout << "Download FFMpeg";
+    std::wcout << "Download FFMpeg";
     return EXIT_FAILURE;
   }
-  cli.parseArguments(args);
+  if (!cli.parseArguments(args)) {
+    std::wcout << "\n";
+    cli.printHelp();
+    return EXIT_FAILURE;
+  }
+  // while (compress) {
+  //   cli.showCompressionProgress();
+  //   std::this_thread::sleep_for(std::chrono::milliseconds(80));  // ~12 fps
+  // }
   return EXIT_SUCCESS;
 }

@@ -101,6 +101,7 @@
   <ItemGroup>
     <ClInclude Include="arcive\FileRAII.h" />
     <ClInclude Include="CLI_Compress.hpp" />
+    <ClInclude Include="Parser.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -4,7 +4,7 @@
     <ShowAllFiles>true</ShowAllFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>--files '.\Videos\Оптимальное планирование\Семинар\2026-02-19 14-17-58.mkv' "hello world.mp4"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--files "C:\Users\Alin0\Videos\Оптимальное планирование\2026-02-24 16-05-54.mkv"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>
