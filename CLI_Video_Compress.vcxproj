@@ -49,12 +49,14 @@
     <IntDir>$(SolutionDir)\build\int\$(Platform)-$(Configuration)\</IntDir>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
+    <TargetName>cli_compress</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)\build\$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\build\int\$(Platform)-$(Configuration)\</IntDir>
     <RunCodeAnalysis>true</RunCodeAnalysis>
     <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
+    <TargetName>cli_compress</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
