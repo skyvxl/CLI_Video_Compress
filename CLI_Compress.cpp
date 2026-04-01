@@ -12,7 +12,7 @@
 CLICompress::CLICompress() {}
 
 void CLICompress::printHelp() {
-  std::wcout << "Usage: cli_video_compress [OPTIONS] [FILES...]\n"
+  std::wcout << "Usage: cli_compress [OPTIONS] [FILES...]\n"
                 "\nOptions:\n"
                 "\t-f, --files [FILES...]\tCompress the specified video files "
                 "(mp4, mkv)\n"
@@ -96,8 +96,7 @@ bool CLICompress::isAlreadyCompressedFile(const fs::path& path) const {
     return false;
   }
 
-  return stem.compare(stem.size() - suffix.size(), suffix.size(), suffix) ==
-         0;
+  return stem.compare(stem.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
 std::wstring CLICompress::formatDuration(long long milliseconds) {
@@ -330,7 +329,8 @@ void CLICompress::compressFiles(const std::vector<fs::path>& files) {
     }
 
     wchar_t buffer[512]{};
-    while (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe) != nullptr) {
+    while (fgetws(buffer, static_cast<int>(std::size(buffer)), pipe) !=
+           nullptr) {
       std::wstring line = buffer;
       line.erase(std::remove(line.begin(), line.end(), L'\n'), line.end());
       line.erase(std::remove(line.begin(), line.end(), L'\r'), line.end());
